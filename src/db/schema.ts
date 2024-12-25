@@ -14,7 +14,11 @@ import {
   timestamp,
   uuid,
   varchar,
-  customType
+  customType,
+  unique,
+  index,
+  uniqueIndex,
+  foreignKey
 } from 'drizzle-orm/pg-core';
 
 export const bytea = customType<{data: Buffer; notNull: false; default: false}>({
@@ -56,7 +60,7 @@ export const permissonType = schema.enum('permission_type', [
 
 export const preventiveAction = schema.table('preventive_action', {
   id: serial('id').primaryKey().notNull(),
-  ugRegistryId: integer('ug_registry_id').notNull(), // TODO
+  mUnitRecordId: integer('m_unit_record_id').notNull().references(() => managementUnit.id),
   createdAt: date('created_at').notNull(),
   finishedAt: date('finished_at'),
   origin: integer('origin'),
@@ -67,7 +71,11 @@ export const preventiveAction = schema.table('preventive_action', {
   actionEficacyDesc: text('action_eficacy_desc'),
   type: integer('type'), // TODO
   status: integer('status').notNull()
-});
+},
+  (t) => [{
+    mUnitRecordIdx: index('m_unit_record_idx').using('btree', t.mUnitRecordId)
+  }]
+);
 
 export const anomaly = schema.table('anomaly', {
   id: serial('id').primaryKey().notNull(),
@@ -77,14 +85,14 @@ export const anomaly = schema.table('anomaly', {
   description: text('description'),
   location: integer('location').notNull(),
   immediateCounterMeasures: text('immediate_counter_measures'),
-  ugInChargeId: integer('ug_in_charge_id').notNull(), // TODO
-  ugRegistryId: integer('ug_registry_id').notNull(), // TODO
+  mUnitResponsibleId: integer('m_unit_responsible_id').notNull().references(() => managementUnit.id),
+  mUnitRecordId: integer('m_unit_record_id').notNull().references(() => managementUnit.id),
   observations: text('observations'),
   classification: integer('classification'),
-  personInCharge: varchar('person_in_charge', {length: 100}), // TODO
+  personInCharge: integer('person_in_charge').notNull().references(() => users.id),
   verificationDesc: text('verification'),
   standardizationDesc: text('standardization'),
-  occurrenceId: integer('occurrence_id'), // TODO
+  occurrenceId: integer('occurrence_id').references(() => occurrence.id),
   anomalySourceDesc: text('anomaly_source_desc'),
   unlockedAt: date('unlocked_at'),
   reminderSent: boolean('reminded_sent'),
@@ -93,10 +101,23 @@ export const anomaly = schema.table('anomaly', {
   type: integer(), // TODO
   anomalySource: integer('anomaly_source'),
   closureRequestedAt: date('closure_requested_at'),
-  subordinationId: integer('subordination_id'), // TODO
+  subordinationId: integer('subordination_id'),
   auditType: varchar('audit_type', {length: 255}), // TODO
   internalAuditItemId: bigint('internal_audit_item_id', {mode: 'number'}).references(() => internalAuditItem.id),
-});
+},
+  (t) => [{
+    subordinationFk: foreignKey({
+      columns: [t.subordinationId],
+      foreignColumns: [t.id],
+      name: 'anomaly_subordination_id_fk',
+    }).onDelete('cascade'),
+    mUnitRecordIdx: index('m_unit_record_idx').using('btree', t.mUnitRecordId),
+    internalAuditItemIdx: index('internal_audit_item_idx').using('btree', t.internalAuditItemId),
+    occurrenceIdx: index('occurrence_idx').using('btree', t.occurrenceId),
+    subordinationIdx: index('subordination_idx').using('btree', t.subordinationId),
+    mUnitResponsibleIdx: index('m_unit_responsible_idx').using('btree', t.mUnitResponsibleId),
+  }]
+);
 
 export const files = schema.table('files', {
   id: uuid('id').primaryKey().notNull(),
@@ -110,81 +131,134 @@ export const indicatorMonitoring = schema.table('indicator_monitoring', {
   id: serial('id').primaryKey().notNull(),
   index: integer('index').notNull(),
   createdAt: date('created_at').notNull(),
-  finished: date('finished_at'),
+  finishedAt: date('finished_at'),
   maxValue: numeric('max_value', {precision: 19, scale: 4}),
   minValue: numeric('min_value', {precision: 19, scale: 4}),
   realValue: numeric('real_value', {precision: 19, scale: 4}),
   baseValueStatus: boolean('base_value_status'),
   realValueStatus: boolean('real_value_status'),
-  indicatorId: integer('indicator_id').notNull().references(() => indicator.id),
+  indicatorId: integer('indicator_id').notNull().references(() => indicator.id, {onDelete: 'cascade'}),
   anomalyId: integer('anomaly_id').references(() => anomaly.id),
   resultReminderDate: date('result_reminder_date'),
   preventiveActionId: integer('preventive_action_id').references(() => preventiveAction.id),
   notApplicable: boolean('not_applicable'),
-});
+},
+  (t) => [{
+    indicatorMonitoringUk: unique('indicator_monitoring_uk').on(t.indicatorId, t.index, t.createdAt, t.finishedAt),
+    indicatorIdx: index('indicator_idx').using('btree', t.indicatorId),
+    anomalyIdx: index('anomaly_idx').using('btree', t.anomalyId),
+    preventiveActionIdx: index('preventive_actio_idx').using('btree', t.preventiveActionId)
+  }]
+);
 
 export const indicatorFiles = schema.table('indicator_files', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', {length: 128}).notNull(),
   description: text('description'),
   fileId: uuid('file_id').notNull().references(() => files.id),
-  indicatorId: integer('indicator_id').notNull().references(() => indicator.id)
-});
+  indicatorId: integer('indicator_id').notNull().references(() => indicator.id, {onDelete: 'cascade'})
+},
+  (t) => [{
+    indicatorIdx: index('anomaly_idx').using('btree', t.indicatorId),
+    fileIdx: index('file_idx').using('btree', t.fileId)
+  }]
+);
 
 export const anomalyFiles = schema.table('anomaly_files', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', {length: 128}).notNull(),
   description: text('description'),
   fileId: uuid('file_id').notNull().references(() => files.id),
-  anomalyId: integer('anomaly_id').notNull().references(() => anomaly.id),
-});
+  anomalyId: integer('anomaly_id').notNull().references(() => anomaly.id, {onDelete: 'cascade'}),
+},
+  (t) => [{
+    anomalyIdx: index('anomaly_idx').using('btree', t.anomalyId),
+    fileIdx: index('file_idx').using('btree', t.fileId)
+  }]
+);
 
 export const activity = schema.table('activity', {
   id: serial('id').primaryKey().notNull(),
-  competenceMapId: integer('competence_map_id').notNull(), // TODO
+  competenceMapId: integer('competence_map_id').notNull().references(() => competenceMap.id, {onDelete: 'cascade'}),
   description: text('description'),
-});
+},
+  (t) => [{
+    competenceMapIdx: index('competence_map_idx').using('btree', t.competenceMapId)
+  }]
+);
 
 export const auditManagement = schema.table('audit_management', {
   id: serial('id').primaryKey().notNull(),
   description: text('description').notNull(),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
-  auditModelId: integer('audit_model_id').notNull(), // TODO
-  personInCharge: varchar('person_in_charge', {length: 100}),
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id),
+  auditModelId: integer('audit_model_id').notNull().references(() => auditModel.id),
+  personInCharge: integer('person_in_charge').notNull().references(() => users.id),
   auditDate: date('audit_date').notNull(),
-});
+},
+  (t) => [{
+    auditModelIdx: index('audit_model_idx').using('btree', t.auditModelId),
+    managementUnitIdx: index('management_unit_idx').using('btree', t.managementUnitId)
+  }]
+);
 
 export const auditManagementIndicator = schema.table('audit_management_indicator', {
   id: serial('id').primaryKey().notNull(),
-  auditManagementId: integer('audit_management_id').notNull().references(() => auditManagement.id),
-  indicatorId: integer('indicator_id').notNull().references(() => indicator.id)
-});
+  auditManagementId: integer('audit_management_id').notNull().references(() => auditManagement.id, {onDelete: 'cascade'}),
+  indicatorId: integer('indicator_id').notNull().references(() => indicator.id, {onDelete: 'cascade'})
+},
+  (t) => [{
+    auditManagementIdx: index('audit_management_idx').using('btree', t.auditManagementId),
+    indicatorIdx: index('indicator_idx').using('btree', t.indicatorId)
+  }]
+);
 
 export const auditManagementIndicatorItem = schema.table('audit_management_indicator_item', {
   id: bigserial('id', {mode: 'number'}),
-  auditManagementIndicatorId: integer('audit_management_indicator_id').notNull().references(() => auditManagementIndicator.id),
-  auditModelItemId: integer('audit_model_item_id').notNull(), // TODO
-  evalFactorItemId: integer('eval_factor_item_id'), // TODO
+  auditManagementIndicatorId: integer('audit_management_indicator_id').notNull().references(() => auditManagementIndicator.id, {onDelete: 'cascade'}),
+  auditModelItemId: integer('audit_model_item_id').notNull().references(() => auditModelItem.id),
+  evalFactorItemId: integer('eval_factor_item_id').references(() => evalFactorItem.id),
   description: text('description'),
-});
+},
+  (t) => [{
+    auditManagementIndicatorIdx: index('audit_management_indicator_idx').using('btree', t.auditManagementIndicatorId),
+    auditModelItemIdx: index('audit_model_item_idx').using('btree', t.auditModelItemId),
+    evalFactorItemIdx: index('eval_factor_item_idx').using('btree', t.evalFactorItemId),
+  }]
+);
 
 export const internalAudit = schema.table('internal_audit', {
   id: serial('id').primaryKey().notNull(),
-  ugRegistryId: integer('ug_registry_id').notNull(), // TODO
-  ugInChargeId: integer('ug_in_charge_id').notNull(), // TODO
+  mUnitRecordId: integer('m_unit_record_id').notNull().references(() => managementUnit.id),
+  mUnitResponsibleId: integer('m_unit_responsible_id').notNull().references(() => managementUnit.id),
   auditDate: date('audit_date').notNull(),
   observations: text('observations'),
-  normId: integer('norm_id').notNull(), // TODO
+  normId: integer('norm_id').notNull().references(() => norm.id),
   status: integer('status').notNull(), // TODO
   finishedAt: date('finished_at'),
-});
+},
+  (t) => [{
+    mUnitRecordIdx: index('m_unit_record_idx').using('btree', t.mUnitRecordId),
+    mUnitResponsibleIdx: index('m_unit_responsible_idx').using('btree', t.mUnitResponsibleId),
+    normIdx: index('norm_idx').using('btree', t.normId),
+  }]
+);
 
 export const causeEffect = schema.table('cause_effect', {
   id: serial('id').primaryKey().notNull(),
   description: varchar('description', {length: 160}).notNull(),
-  effectId: integer('effect_id'), // TODO
+  effectId: integer('effect_id'),
   anomalyId: integer('anomaly_id').references(() => anomaly.id)
-});
+},
+  (t) => [{
+    effectFk: foreignKey({
+      columns: [t.effectId],
+      foreignColumns: [t.id],
+      name: 'cause_effect_effect_id_fk',
+    }),
+    effectIdx: index('effect_idx').using('btree', t.effectId),
+    anomalyIdx: index('anomaly_idx').using('btree', t.anomalyId),
+  }]
+);
 
 export const comment = schema.table('comment', {
   id: serial('id').primaryKey().notNull(),
@@ -192,17 +266,27 @@ export const comment = schema.table('comment', {
 
 export const commentItem = schema.table('comment_item', {
   id: bigserial('id', {mode: 'number'}).primaryKey().notNull(),
-  commentId: integer('comment_id').notNull().references(() => comment.id),
-  userId: integer('user_id').notNull(), // TODO
+  commentId: integer('comment_id').notNull().references(() => comment.id, {onDelete: 'cascade'}),
+  userId: integer('user_id').notNull().references(() => users.id),
   commentText: text('text').notNull(),
   sentAt: timestamp('sent_at', {withTimezone: true}).notNull(),
-});
+},
+  (t) => [{
+    commentIdx: index('comment_idx').using('btree', t.commentId),
+    userIdx: index('user_idx').using('btree', t.userId),
+  }]
+);
 
 export const competence = schema.table('competence', {
   id: serial('id').primaryKey().notNull(),
-  competenceMapId: integer('competence_map_id').notNull(), // TODO
+  competenceMapId: integer('competence_map_id').notNull().references(() => competenceMap.id, {onDelete: 'cascade'}),
   organizationalCompetenceId: integer('organizational_competence_id').references(() => organizationalCompetence.id),
-});
+},
+  (t) => [{
+    competenceMapIdx: index('competence_map_idx').using('btree', t.competenceMapId),
+    organizationalCompetenceIdx: index('organizational_competence_idx').using('btree', t.organizationalCompetenceId),
+  }]
+);
 
 export const organizationalCompetence = schema.table('organizational_competence', {
   id: serial('id').primaryKey().notNull(),
@@ -212,12 +296,17 @@ export const organizationalCompetence = schema.table('organizational_competence'
 
 export const emailHistory = schema.table('email_history', {
   id: bigserial('id', {mode: 'number'}).primaryKey().notNull(),
-  senderId: integer('sender_id').notNull(), // TODO
+  senderId: integer('sender_id').notNull().references(() => users.id),
   subject: varchar('subject', {length: 160}).notNull(),
   message: text('message').notNull(),
-  recipientId: integer('recipient_id').notNull(), // TODO
+  recipientId: integer('recipient_id').notNull().references(() => users.id),
   sentAt: timestamp('sent_at', {withTimezone: true}).notNull(),
-});
+},
+  (t) => [{
+    senderIdx: index('sender_idx').using('btree', t.senderId),
+    recipientIdx: index('recipient_idx').using('btree', t.recipientId),
+  }]
+);
 
 export const evalFactor = schema.table('eval_factor', {
   id: serial('id').primaryKey().notNull(),
@@ -234,23 +323,29 @@ export const indicator = schema.table('indicator', {
   tolerance: doublePrecision('tolerance'),
   frequency: integer('frequency'),
   bestValue: integer('best_value'),
-  measurementUnitId: integer('measurement_unit_id'), // TODO
+  measurementUnitId: integer('measurement_unit_id').references(() => measurementUnit.id),
   status: integer('status').notNull(), // TODO
-  userInChargeId: integer('user_in_charge_id'), // TODO
+  userInChargeId: integer('user_in_charge_id').references(() => users.id),
   relevance: integer('relevance'),
   monitoringFrequency: integer('monitoring_frequency'),
   controlMechanismDesc: text('control_mechanism_desc'),
   dataSources: text('data_sources'),
   calculationFormula: text('calculation_formula'),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
-  strategicMapObjectiveId: integer('strategic_map_objective_id').notNull(), // TODO
-});
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id),
+  strategicMapObjectiveId: integer('strategic_map_objective_id').notNull().references(() => strategicMapObjective.id),
+},
+  (t) => [{
+    strategicMapObjectiveIdx: index('strategic_map_objective_idx').using('btree', t.strategicMapObjectiveId),
+    managementUnitIdx: index('management_unit_idx').using('btree', t.managementUnitId),
+    measurementUnitIdx: index('measurement_unit_idx').using('btree', t.measurementUnitId),
+  }]
+);
 
 export const indicatorAlert = schema.table('indicator_alert', {
   id: serial('id').primaryKey().notNull(),
-  indicatorMonitoringId: integer('indicator_monitoring_id').references(() => indicatorMonitoring.id),
+  indicatorMonitoringId: integer('indicator_monitoring_id').references(() => indicatorMonitoring.id, {onDelete: 'set null'}),
   alertId: integer('alert_id'), // TODO
-  indicatorId: integer('indicator_id').references(() => indicator.id),
+  indicatorId: integer('indicator_id').references(() => dashboardSyncIndicator.indicatorId),
 });
 
 export const dashboardSyncIndicator = schema.table('dashboard_sync_indicator', {
@@ -264,34 +359,54 @@ export const dashboardSyncIndicator = schema.table('dashboard_sync_indicator', {
 
 export const initiative = schema.table('initiative', {
   id: serial('id').primaryKey().notNull(),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
-  strategicMapObjectiveId: integer('strategic_map_objective_id').notNull(), // TODO
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id),
+  strategicMapObjectiveId: integer('strategic_map_objective_id').notNull().references(() => strategicMapObjective.id),
   description: text('description').notNull(),
-});
+},
+  (t) => [{
+    strategicMapObjectiveIdx: index('strategic_map_objective_idx').using('btree', t.strategicMapObjectiveId),
+    managementUnitIdx: index('management_unit_idx').using('btree', t.managementUnitId),
+  }]
+);
 
 export const internalAuditItem = schema.table('internal_audit_item', {
   id: bigserial('id', {mode: 'number'}).primaryKey().notNull(),
-  internalAuditId: integer('internal_audit_id').notNull().references(() => internalAudit.id),
-  normRequirementId: integer('norm_requirement_id'), // TODO
+  internalAuditId: integer('internal_audit_id').notNull().references(() => internalAudit.id, {onDelete: 'cascade'}),
+  normRequirementId: integer('norm_requirement_id').references(() => normRequirement.id),
   description: text('description').notNull(),
-  externalUgId: integer('external_ug_id'), // TODO
-});
+  externalManagementUnitId: integer('external_management_unit_id').references(() => managementUnit.id, {onDelete: 'cascade'}),
+},
+  (t) => [{
+    internalAuditIdx: index('internal_audit_idx').using('btree', t.internalAuditId),
+    normRequirementIdx: index('norm_requirement_idx').using('btree', t.normRequirementId),
+    externalManagementUnitId: index('external_management_unit_idx').using('btree', t.externalManagementUnitId),
+  }]
+);
 
 export const evalFactorItem = schema.table('eval_factor_item', {
   id: bigserial('id', {mode: 'number'}).primaryKey().notNull(),
-  evalFactorId: integer('eval_factor_id').notNull().references(() => evalFactor.id),
+  evalFactorId: integer('eval_factor_id').notNull().references(() => evalFactor.id, {onDelete: 'cascade'}),
   value: numeric('value', {precision: 19, scale: 4}).notNull(),
   description: varchar('description', {length: 160}).notNull(),
-});
+},
+  (t) => [{
+    evalFactorIdx: index('eval_factor_idx').using('btree', t.evalFactorId),
+  }]
+);
 
 export const auditModelItem = schema.table('audit_model_item', {
   id: serial('id').primaryKey().notNull(),
-  auditModelId: integer('audit_model_id').notNull(), // TODO
+  auditModelId: integer('audit_model_id').notNull().references(() => auditModel.id, {onDelete: 'cascade'}),
   name: varchar('name', {length: 128}).notNull(),
   description: text('description'),
   evalFactorId: integer('eval_factor_id').references(() => evalFactor.id),
   order: integer('order').notNull(),
-});
+},
+  (t) => [{
+    auditModelIdx: index('audit_model_idx').using('btree', t.auditModelId),
+    evalFactorIdx: index('eval_factor_idx').using('btree', t.evalFactorId),
+  }]
+);
 
 export const proceduresLogs = schema.table('procedures_logs', {
   id: bigserial('id', {mode: 'number'}).primaryKey().notNull(),
@@ -304,18 +419,26 @@ export const proceduresLogs = schema.table('procedures_logs', {
 
 export const competenceMap = schema.table('competence_map', {
   id: serial('id').primaryKey().notNull(),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
-});
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id, {onDelete: 'cascade'}),
+},
+  (t) => [{
+    competenceMapUk: uniqueIndex('competence_map_uk').using('btree', t.managementUnitId)
+  }]
+);
 
 export const strategicMap = schema.table('strategic_map', {
   id: serial('id').primaryKey().notNull(),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id, {onDelete: 'cascade'}),
   description: text('description'),
-});
+},
+  (t) => [{
+    strategicMapUk: uniqueIndex('strategic_map_uk').using('btree', t.managementUnitId)
+  }]
+);
 
 export const businessMap = schema.table('business_map', {
   id: serial('id').primaryKey().notNull(),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id, {onDelete: 'cascade'}),
   mission: text('mission'),
   suppliers: text('suppliers'),
   supplies: text('supplies'),
@@ -346,34 +469,59 @@ export const businessMap = schema.table('business_map', {
   securityExpression: text('security_expression'),
   securityFrequency: text('security_frequency'),
   securityTarget: text('security_target'),
-});
+},
+  (t) => [{
+    businessMapUk: uniqueIndex('business_map_uk').using('btree', t.managementUnitId)
+  }]
+);
 
 export const fcsMatrix = schema.table('fcs_matrix', {
   id: serial('id').primaryKey().notNull(),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
-  strategicMapObjectiveId: integer('strategic_map_objective_id').notNull(), // TODO
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id),
+  strategicMapObjectiveId: integer('strategic_map_objective_id').notNull().references(() => strategicMapObjective.id),
   evalFactorId: integer('eval_factor_id').notNull().references(() => evalFactor.id),
-});
+},
+  (t) => [{
+    fcsMatrixUk: unique('fcs_matrix_uk').on(t.managementUnitId, t.strategicMapObjectiveId),
+    managementUnitIdx: index('management_unit_idx').using('btree', t.managementUnitId),
+    strategicMapObjectiveIdx: index('strategic_map_objective_idx').using('btree', t.strategicMapObjectiveId),
+    evalFactorIdx: index('eval_factor_idx').using('btree', t.evalFactorId)
+  }]
+);
 
 export const fcsMatrixFactor = schema.table('fcs_matrix_factor', {
   id: serial('id').primaryKey().notNull(),
-  fcsMatrixId: integer('fcs_matrix_id').notNull().references(() => fcsMatrix.id),
+  fcsMatrixId: integer('fcs_matrix_id').notNull().references(() => fcsMatrix.id, {onDelete: 'cascade'}),
   description: varchar('description', {length: 160}).notNull(),
-});
+},
+  (t) => [{
+    fcsMatrixIdx: index('fcs_matrix_idx').using('btree', t.fcsMatrixId),
+  }]
+);
 
 export const fcsMatrixInitiative = schema.table('fcs_matrix_initiative', {
   id: serial('id').primaryKey().notNull(),
-  fcsMatrixId: integer('fcs_matrix_id').notNull().references(() => fcsMatrix.id),
+  fcsMatrixId: integer('fcs_matrix_id').notNull().references(() => fcsMatrix.id, {onDelete: 'cascade'}),
   description: varchar('description', {length: 160}).notNull(),
   priority: boolean().notNull(),
-});
+},
+  (t) => [{
+    fcsMatrixIdx: index('fcs_matrix_idx').using('btree', t.fcsMatrixId),
+  }]
+);
 
 export const fcsMatrixInitiativeFactor = schema.table('fcs_matrix_initiative_factor', {
   id: serial('id').primaryKey().notNull(),
-  fcsMatrixId: integer('fcs_matrix_id').notNull().references(() => fcsMatrix.id),
-  fcsMatrixFactorId: integer('fcs_matrix_factor_id').notNull().references(() => fcsMatrixInitiative.id),
+  fcsMatrixInitiativeId: integer('fcs_matrix_initiative_id').notNull().references(() => fcsMatrixInitiative.id, {onDelete: 'cascade'}),
+  fcsMatrixFactorId: integer('fcs_matrix_factor_id').notNull().references(() => fcsMatrixFactor.id, {onDelete: 'cascade'}),
   evalFactorItemId: integer('eval_factor_item_id').notNull().references(() => evalFactorItem.id),
-});
+},
+  (t) => [{
+    fcsMatrixInitiativeId: index('fcs_matrix_initiative_idx').using('btree', t.fcsMatrixInitiativeId),
+    evalFactorItemIdx: index('eval_factor_item_idx').using('btree', t.evalFactorItemId),
+    fcsMatrixFactorIdx: index('fcs_matrix_factor_idx').using('btree', t.fcsMatrixFactorId),
+  }]
+);
 
 export const message = schema.table('message', {
   id: serial('id').primaryKey().notNull(),
@@ -398,34 +546,58 @@ export const norm = schema.table('norm', {
   description: text('description'),
 });
 
+export const strategicObjective = schema.table('strategic_objective', {
+  id: serial('id').primaryKey().notNull(),
+  description: varchar('description', {length: 255}).notNull(),
+})
+
 export const strategicMapObjective = schema.table('strategic_map_objective', {
   id: serial('id').primaryKey().notNull(),
-  strategicMapPerspectiveId: integer('strategic_map_perspective_id').notNull(), // TODO
-  strategicObjectiveId: integer('strategic_objective_id').notNull(), // TODO
-});
+  strategicMapPerspectiveId: integer('strategic_map_perspective_id').notNull().references(() => strategicMapPerspective.id),
+  strategicObjectiveId: integer('strategic_objective_id').notNull().references(() => strategicObjective.id)
+},
+  (t) => [{
+    strategicObjetiveIdx: index('strategic_objective_idx').using('btree', t.strategicObjectiveId),
+    strategicMapPerspectiveIdx: index('strategic_map_perspective_id').using('btree', t.strategicMapPerspectiveId)
+  }]
+);
 
 export const occurrence = schema.table('occurrence', {
   id: serial('id').primaryKey().notNull(),
   description: text('description'),
   occurrenceDate: date('occurrence_date').notNull(),
   status: varchar('status', {length: 160}),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
-  reporterId: integer('reporter_id'), // TODO
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id, {onDelete: 'cascade'}),
+  reporterId: integer('reporter_id').references(() => users.id),
   repeatedIncident: boolean('repeated_incident'),
   immediateCountermeasures: text('immediate_countermeasures'),
   number: integer('number').notNull(), // TODO
-});
+},
+  (t) => [{
+    managementUnitIdx: index('management_unit_idx').using('btree', t.managementUnitId),
+    reporterIdx: index('reporter_idx').using('btree', t.reporterId),
+  }]
+);
 
 export const filterIndicatorPanel = schema.table('filter_indicator_panel', {
   id: serial('id').primaryKey().notNull(),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
-  strategicMapObjectiveId: integer('strategic_map_objetive_id').notNull().references(() => strategicMapObjective.id),
-});
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id),
+  strategicMapObjectiveId: integer('strategic_map_objetive_id').notNull().references(() => strategicMapObjective.id, {onDelete: 'cascade'}),
+},
+  (t) => [{
+    strategicMapObjectiveIdx: index('strategic_map_objective_idx').using('btree', t.strategicMapObjectiveId),
+    managementUnitIdx: index('management_unit_idx').using('btree', t.managementUnitId),
+  }]
+);
 
 export const roles = schema.table('roles', {
   id: serial('id').primaryKey().notNull(),
   name: varchar('name', {length: 128}).notNull(),
-});
+},
+  (t) => [{
+    roleNameUk: unique('role_name_uk').on(t.name)
+  }],
+);
 
 export const systemParams = schema.table('system_params', {
   id: serial('id').primaryKey().notNull(),
@@ -436,22 +608,32 @@ export const systemParams = schema.table('system_params', {
   smtpUser: varchar('smtp_user', {length: 160}).notNull(),
   smtpPassword: bytea('smtp_password'),
   smtpSender: varchar('smtp_sender', {length: 160}).notNull(),
-  logoId: uuid('logo_id').notNull().references(() => files.id),
-  reportLogoId: uuid('report_logo_id').notNull().references(() => files.id),
+  logoId: uuid('logo_id').references(() => files.id, {onDelete: 'set null'}),
+  reportLogoId: uuid('report_logo_id').references(() => files.id, {onDelete: 'set null'}),
   notifyInvolvedUsersAnomaly: boolean('notify_involved_users_anomaly').notNull(), 
   timerCreateIndicatorTarget: integer('timer_create_indicator_target').notNull(),
   timerRealValuesUpdate: integer('timer_real_values_update').notNull(),
   timerAnomalyFixReminder: integer('timeranomaly_fix_reminder').notNull(),
   timerAnomalyFixLock: integer('timeranomaly_fix_lock').notNull(),
   timerAnomalyFixClosure: integer('timeranomaly_fix_closure').notNull(),
-});
+},
+  (t) => [{
+    logoIdx: index('logo_idx').using('btree', t.logoId),
+    reportLogoIdx: index('report_logo_idx').using('btree', t.reportLogoId),
+  }]
+);
 
 export const permissions = schema.table('permissions', {
   id: serial('id').primaryKey().notNull(),
-  roleId: integer('role_id').notNull().references(() => roles.id),
-  pageId: integer('page_id').notNull(), // TODO
+  roleId: integer('role_id').notNull().references(() => roles.id, {onDelete: 'cascade'}),
+  pageId: integer('page_id').notNull().references(() => pages.id, {onDelete: 'cascade'}),
   type: permissonType('type').notNull(),
-});
+},
+  (t) => [{
+    roleIdx: index('role_idx').using('btree', t.roleId),
+    pageIdx: index('page_idx').using('btree', t.pageId),
+  }]
+);
 
 export const perspective = schema.table('perspective', {
   id: serial('id').primaryKey().notNull(),
@@ -460,10 +642,15 @@ export const perspective = schema.table('perspective', {
 
 export const strategicMapPerspective = schema.table('strategic_map_perspective', {
   id: serial('id').primaryKey().notNull(),
-  strategicMapId: integer('strategic_map_id').notNull().references(() => strategicMap.id),
+  strategicMapId: integer('strategic_map_id').notNull().references(() => strategicMap.id, {onDelete: 'cascade'}),
   perspectiveId: integer('perspective_id').notNull().references(() => perspective.id),
   order: integer('order').notNull(),
-});
+},
+  (t) => [{
+    strategicMapIdx: index('strategic_map_idx').using('btree', t.strategicMapId),
+    perspectiveIdx: index('perspective_idx').using('btree', t.perspectiveId),
+  }]
+);
 
 export const actionPlan = schema.table('action_plan', {
   id: serial('id').primaryKey().notNull(),
@@ -471,18 +658,26 @@ export const actionPlan = schema.table('action_plan', {
   descriptionHow: text('description_how'),
   descriptionWhy: text('description_why'),
   descriptionWho: text('description_who'),
-  anomalyId: integer('anomaly_id').references(() => anomaly.id),
+  anomalyId: integer('anomaly_id').references(() => anomaly.id, {onDelete: 'cascade'}),
   planDate: date('plan_date'),
   status: integer('status'), // TODO
   statusUpdateDate: date('status_update_date'),
-  preventiveActionId: integer('preventive_action_id').references(() => preventiveAction.id),
-  managementUnitId: integer('management_unit_id').notNull(), // TODO
-  initiativeId: integer('initiative_id').references(() => initiative.id),
-  userId: integer('user_id'), // TODO
+  preventiveActionId: integer('preventive_action_id').references(() => preventiveAction.id, {onDelete: 'cascade'}),
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id),
+  initiativeId: integer('initiative_id').references(() => initiative.id, {onDelete: 'cascade'}),
+  userId: integer('user_id').references(() => users.id),
   amountP: integer('amount_p'),
   amountR: integer('amount_r'),
   measurementDescription: text(),
-});
+},
+  (t) => [{
+    anomalyIdx: index('anomaly_idx').using('btree', t.anomalyId),
+    preventiveActionIdx: index('preventive_action_idx').using('btree', t.preventiveActionId),
+    managementUnitIdx: index('management_unit_idx').using('btree', t.managementUnitId),
+    initiativeIdx: index('initiative_idx').using('btree', t.initiativeId),
+    userIdx: index('user_idx').using('btree', t.userId),
+  }]
+);
 
 export const managementPlan = schema.table('management_plan', {
   id: serial('id').primaryKey().notNull(),
@@ -507,31 +702,47 @@ export const managementPlan = schema.table('management_plan', {
 export const normRequirement = schema.table('norm_requirement', {
   id: serial('id').primaryKey().notNull(),
   description: text('description'),
-  normId: integer('norm_id').notNull().references(() => norm.id),
+  normId: integer('norm_id').notNull().references(() => norm.id, {onDelete: 'cascade'}),
   index: varchar('index', {length: 20}).notNull(),
-});
+},
+  (t) => [{
+    normIdx: index('norm_idx').using('btree', t.normId)
+  }]
+);
 
 export const indicatorCancelRequests = schema.table('indicator_cancel_requests', {
   id: serial('id').primaryKey().notNull(),
   status: integer('status').notNull(), // TODO
-  indicatorId: integer('indicator_id').notNull().references(() => indicator.id),
-  userId: integer('user_id'), // TODO
+  indicatorId: integer('indicator_id').notNull().references(() => indicator.id, {onDelete: 'cascade'}),
+  userId: integer('user_id').references(() => users.id),
   cancelReason: text('cancel_reason'),
   response: text('response'),
   requestedAt: date('requested_at').notNull(),
   commentId: integer('comment_id').references(() => comment.id),
-});
+},
+  (t) => [{
+    indicatorIdx: index('indicator_idx').using('btree', t.indicatorId),
+    commentIdx: index('comment_idx').using('btree', t.commentId),
+    userIdx: index('user_idx').using('btree', t.userId),
+  }]
+);
 
 export const indicatorRenegotiationRequests = schema.table('indicator_renegotiation_requests', {
   id: serial('id').primaryKey().notNull(),
   status: integer('status').notNull(), // TODO
-  indicatorId: integer('indicator_id').notNull().references(() => indicator.id),
-  userId: integer('user_id'), // TODO
+  indicatorId: integer('indicator_id').notNull().references(() => indicator.id, {onDelete: 'cascade'}),
+  userId: integer('user_id').references(() => users.id),
   cancelReason: text('cancel_reason'),
   response: text('response'),
   requestedAt: date('requested_at').notNull(),
   commentId: integer('comment_id').references(() => comment.id),
-});
+},
+  (t) => [{
+    indicatorIdx: index('indicator_idx').using('btree', t.indicatorId),
+    userIdx: index('user_idx').using('btree', t.userId),
+    commentIdx: index('comment_idx').using('btree', t.commentId),
+  }]
+);
 
 export const pages = schema.table('pages', {
   id: serial('id').primaryKey().notNull(),
@@ -556,7 +767,18 @@ export const managementUnit = schema.table('management_unit', {
   allowCompetenceMap: boolean('allow_competence_map'),
   allowFcsMatrix: boolean('allow_fcs_matrix'),
   level: integer('level').notNull(),
-});
+},
+  (t) => [{
+    subordinationFk: foreignKey({
+      columns: [t.subordinationId],
+      foreignColumns: [t.id],
+      name: 'management_unit_subordination_id_fk'
+    }),
+    managementUnitUk: unique('management_unit_uk').on(t.name, t.managementPlanId),
+    subordinationIdx: index('subordination_idx').using('btree', t.subordinationId),
+    hierarchicalLevelIdx: index('hierarchical_level_idx').using('btree', t.hierarchicalLevelId),
+  }]
+);
 
 export const measurementUnit = schema.table('measurement_unit', {
   id: serial('id').primaryKey().notNull(),
@@ -572,18 +794,47 @@ export const users = schema.table('users', {
   fullName: varchar('full_name', {length: 128}).notNull(),
   position: varchar('position', {length: 128}).notNull(), // TODO
   additionalInfo: text('additional_info'),
-  profilePhotoId: uuid('profile_photo_id').references(() => files.id),
+  profilePhotoId: uuid('profile_photo_id').references(() => files.id, {onDelete: 'set null'}),
   userRole: integer('userRole'), // TODO
   extension: varchar('extension', {length: 8}),
   banned: boolean('blocked').notNull(),
-});
+},
+  (t) => [{
+    userLoginUk: unique('user_login_uk').on(t.userName),
+    profilePhotoId: index('profile_photo_idx').using('btree', t.profilePhotoId),
+  }]
+);
 
 export const internalAuditUser = schema.table('internal_audit_user', {
   id: serial('id').primaryKey().notNull(),
-  internalAuditId: integer('internal_audit_id').notNull().references(() => internalAudit.id),
+  internalAuditId: integer('internal_audit_id').notNull().references(() => internalAudit.id, {onDelete: 'cascade'}),
   userName: varchar('user_name', {length: 48}).notNull(),
   position: varchar('position', {length: 128}).notNull(), // TODO
   userRole: integer('userRole'), // TODO
-});
+},
+  (t) => [{
+    internalAuditIdx: index('internal_audit_idx').using('btree', t.internalAuditId)
+  }]
+);
 
+export const userRoles = schema.table('user_roles', {
+  id: serial('id').notNull().primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, {onDelete: 'cascade'}),
+  roleId: integer('role_id').notNull().references(() => roles.id, {onDelete: 'cascade'})
+},
+  (t) => [{
+    userIdx: index('user_idx').using('btree', t.userId),
+    roleIdx: index('role_idx').using('btree', t.roleId),
+  }]
+);
 
+export const managementUnitUser = schema.table('management_unit_user', {
+  id: serial('id').notNull().primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, {onDelete: 'cascade'}),
+  managementUnitId: integer('management_unit_id').notNull().references(() => managementUnit.id, {onDelete: 'cascade'}),
+},
+  (t) => [{
+    userIdx: index('user_idx').using('btree', t.userId),
+    managementIdx: index('management_idx').using('btree', t.managementUnitId),
+  }]
+);
