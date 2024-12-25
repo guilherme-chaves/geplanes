@@ -14,6 +14,7 @@
     "jsr:@std/io@0.224": "0.224.9",
     "jsr:@std/media-types@1": "1.1.0",
     "jsr:@std/path@1": "1.0.8",
+    "npm:@types/node@*": "22.5.4",
     "npm:@types/pg@^8.11.10": "8.11.10",
     "npm:drizzle-kit@*": "0.30.0_esbuild@0.19.12",
     "npm:drizzle-kit@0.30": "0.30.0_esbuild@0.19.12",
