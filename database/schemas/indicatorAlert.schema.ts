@@ -1,4 +1,4 @@
-import { integer, serial } from "drizzle-orm/pg-core";
+import { bigint, integer, serial } from "drizzle-orm/pg-core";
 import { schema } from "./schema.ts";
 import { dashboardSyncIndicator } from "./dashboardSyncIndicator.schema.ts";
 import { indicatorMonitoring } from "./indicatorMonitoring.schema.ts";
@@ -10,7 +10,7 @@ export const indicatorAlert = schema.table("indicator_alert", {
     { onDelete: "set null" },
   ),
   alertId: integer("alert_id"), // TODO
-  indicatorId: integer("indicator_id").references(() =>
-    dashboardSyncIndicator.indicatorId
+  indicatorId: bigint("indicator_id", { mode: "number" }).references(() =>
+    dashboardSyncIndicator.id
   ),
 });
