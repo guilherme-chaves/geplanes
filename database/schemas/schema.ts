@@ -9,7 +9,7 @@ export const bytea = customType<
   },
 });
 
-export const schema = pgSchema("geplanes_bsc");
+export const schema = pgSchema("geplanes");
 
 export const fileContentType = schema.enum("file_content_type", [
   "application/pdf", // .pdf
